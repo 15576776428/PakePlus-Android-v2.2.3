@@ -1,80 +1,75 @@
 window.addEventListener("DOMContentLoaded",()=>{const t=document.createElement("script");t.src="https://www.googletagmanager.com/gtag/js?id=G-W5GKHM0893",t.async=!0,document.head.appendChild(t);const n=document.createElement("script");n.textContent="window.dataLayer = window.dataLayer || [];function gtag(){dataLayer.push(arguments);}gtag('js', new Date());gtag('config', 'G-W5GKHM0893');",document.body.appendChild(n)});// ==========================================
-// 极度保守的 WebView 兼容脚本
+// 移动端触摸适配完整脚本
 // ==========================================
 
-// 1. 不要重写 window.open，而是通过事件监听来控制行为
 (function() {
-    // 禁止 Cloudflare 挑战脚本可能触发的问题
-    if (window.location.href.indexOf('cdn-cgi/challenge-platform') !== -1) {
-        console.log('Cloudflare challenge detected, attempting bypass...');
-        // 如果可能，尝试通知页面验证已通过
-        window.dispatchEvent(new Event('cf-chl-opt'));
+    // 1. 解决移动端 300ms 延迟 & 点击无响应
+    // 这个方法会在 root 节点监听，强行把 touch 事件转成 click 触发
+    function initTouchEvents() {
+        // 获取根元素，通常 body 或 document
+        const root = document.body;
+        
+        // 核心：禁止移动端双指缩放、长按呼出菜单等干扰行为
+        // 如果你需要用户缩放功能，请注释掉这部分
+        document.addEventListener('touchstart', function(e) {
+            if (e.touches.length > 1) {
+                // 阻止多指操作（如缩放），避免干预点击
+                e.preventDefault();
+            }
+        }, { passive: false });
+
+        document.addEventListener('gesturestart', function(e) {
+            // 彻底禁用系统手势（如 WebView 的左右滑返回）
+            e.preventDefault();
+        });
+        
+        // 阻止 iOS 的长按选中、Android 的长按菜单
+        document.addEventListener('contextmenu', function(e) {
+            e.preventDefault();
+        });
     }
 
-    // 2. 安全的链接拦截
-    document.addEventListener('click', function(e) {
-        var target = e.target;
-        var anchor = target.closest('a');
-        
-        if (!anchor || !anchor.href) return;
-        
-        // 忽略 javascript: 和其他伪协议
-        if (anchor.href.startsWith('javascript:')) return;
-        
-        // 处理 _blank 链接
-        var isBlank = anchor.target === '_blank';
-        var baseBlank = document.querySelector('head base[target="_blank"]');
-        
-        if (isBlank || (baseBlank && !anchor.target)) {
-            e.preventDefault();
-            e.stopPropagation();
+    // 2. CSS 注入：保证按钮的触摸区域和视觉反馈
+    function injectStyle() {
+        const style = document.createElement('style');
+        style.textContent = `
+            /* 让所有按钮和链接拥有更灵敏的点击区域 */
+            a, button, [role="button"], input[type="button"], input[type="submit"], .btn {
+                touch-action: manipulation; /* 消除300ms延迟核心 */
+                cursor: pointer;
+                -webkit-tap-highlight-color: rgba(0,0,0,0.1); /* 给予点击高亮反馈 */
+                user-select: none; /* 禁止文字选择，避免干扰 */
+                -webkit-user-select: none;
+                -webkit-touch-callout: none; /* 禁止iOS长按菜单 */
+            }
             
-            // 使用 setTimeout 确保 WebView 正确处理
-            setTimeout(function() {
-                window.location.href = anchor.href;
-            }, 0);
-        }
-    }, true);
+            /* 针对可能的覆盖层，确保点击穿透 */
+            body {
+                -webkit-overflow-scrolling: touch;
+            }
+        `;
+        document.head.appendChild(style);
+    }
 
-    // 3. 处理可能的 window.open 调用（但不清除原生功能）
-    var _originalOpen = window.open;
-    window.open = function(url, target, features) {
-        console.log('window.open called with:', url);
-        
-        // 如果是 Cloudflare 相关的 URL，不处理
-        if (url && url.indexOf('cdn-cgi') !== -1) {
-            return null;
-        }
-        
-        // 如果是正常的 HTTP/HTTPS 链接
-        if (typeof url === 'string' && (url.indexOf('http') === 0)) {
-            window.location.href = url;
-            return null;
-        }
-        
-        // 其他协议（tel:, mailto:, intent://）保持原生行为
-        try {
-            return _originalOpen.call(window, url, target, features);
-        } catch(e) {
-            console.error('window.open failed:', e);
-            return null;
-        }
-    };
+    // 3. 恢复之前的链接处理，但增加移动端容错
+    function hookClick() {
+        document.addEventListener('click', function(e) {
+            const origin = e.target.closest('a');
+            const isBaseTargetBlank = document.querySelector('head base[target="_blank"]');
+            
+            if ((origin && origin.href && origin.target === '_blank') ||
+                (origin && origin.href && isBaseTargetBlank)) {
+                e.preventDefault();
+                console.log('[移动端] 处理_blank链接:', origin.href);
+                window.location.href = origin.href;
+            }
+        }, true);
+    }
+    
+    // 执行初始化
+    injectStyle();
+    initTouchEvents();
+    hookClick();
 
-    // 4. 捕获所有未处理的错误，防止它们导致 WebView 崩溃
-    window.onerror = function(msg, url, line, col, error) {
-        console.error('Global error caught:', msg, 'at', url, ':', line);
-        // 如果是 Cloudflare 脚本的错误，忽略它
-        if (url && url.indexOf('cdn-cgi') !== -1) {
-            return true; // 阻止错误冒泡
-        }
-        return false;
-    };
-
-    // 5. 处理未捕获的 Promise 错误
-    window.addEventListener('unhandledrejection', function(event) {
-        console.error('Unhandled rejection:', event.reason);
-        // 防止错误导致 WebView 崩溃
-        event.preventDefault();
-    });
+    console.log('移动端适配脚本加载完成');
 })();
