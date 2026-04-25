@@ -1,4 +1,31 @@
 window.addEventListener("DOMContentLoaded",()=>{const t=document.createElement("script");t.src="https://www.googletagmanager.com/gtag/js?id=G-W5GKHM0893",t.async=!0,document.head.appendChild(t);const n=document.createElement("script");n.textContent="window.dataLayer = window.dataLayer || [];function gtag(){dataLayer.push(arguments);}gtag('js', new Date());gtag('config', 'G-W5GKHM0893');",document.body.appendChild(n)});// ==========================================
+// 外部浏览器跳转（解决 Google 验证被拦截）
+// ==========================================
+(function() {
+    const externalDomains = [
+        'accounts.google.com',
+        'recaptcha',
+        'gstatic.com/recaptcha',
+        'challenge-platform'
+    ];
+
+    document.addEventListener('click', function(e) {
+        const anchor = e.target.closest('a');
+        if (!anchor || !anchor.href) return;
+
+        for (let domain of externalDomains) {
+            if (anchor.href.includes(domain)) {
+                e.preventDefault();
+                e.stopPropagation();
+                window.open(anchor.href, '_blank');
+                return;
+            }
+        }
+    }, true);
+})();
+
+
+// ==========================================
 // 性能优化 + 移动端适配完整脚本
 // ==========================================
 
